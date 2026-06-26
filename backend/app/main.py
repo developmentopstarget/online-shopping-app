@@ -1,19 +1,31 @@
 """
-Sneaker Shop API — v1
-A simple FastAPI backend for an online shopping app.
-Endpoints: list products, get one product, "checkout" (fake/test mode).
+Sneaker Shop API — M1
+Real SQLite database via SQLAlchemy. Products support search, category filter,
+price range, sort, and pagination.
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List
+from sqlalchemy.orm import Session
+from sqlalchemy import func
+from typing import Optional
+
+from .database import engine, get_db
+from .models import Base, Product, Category
+from .schemas import (
+    ProductOut,
+    ProductListResponse,
+    CategoryOut,
+    CheckoutRequest,
+    CheckoutResponse,
+)
+from .seed import seed
+
+Base.metadata.create_all(bind=engine)
+seed()
 
 app = FastAPI(title="Sneaker Shop API")
 
-# --- CORS setup ---
-# Without this, the browser blocks requests from your React app (port 5173)
-# to this API (port 8000), since they're on different ports.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -21,78 +33,91 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+PAGE_SIZE = 12
 
-# --- Data models ---
-# Pydantic models define the exact "shape" of data going in/out.
-# FastAPI uses these to validate requests automatically.
-
-class Product(BaseModel):
-    id: int
-    name: str
-    price: float
-    icon: str  # used by the frontend to pick an icon, no real images yet
-
-
-class CartItem(BaseModel):
-    product_id: int
-    quantity: int
-
-
-class CheckoutRequest(BaseModel):
-    items: List[CartItem]
-
-
-class CheckoutResponse(BaseModel):
-    success: bool
-    order_id: str
-    total: float
-    message: str
-
-
-# --- Fake in-memory "database" ---
-# In v1, we don't have a real database yet — just a Python list.
-# This resets every time the server restarts. That's fine for now.
-
-PRODUCTS = [
-    Product(id=1, name="Classic runner", price=59.00, icon="shoe"),
-    Product(id=2, name="Trail boot", price=89.00, icon="shoe"),
-    Product(id=3, name="Slip-on", price=45.00, icon="shoe"),
-]
-
-
-# --- Routes ---
 
 @app.get("/")
 def root():
     return {"status": "Sneaker Shop API is running"}
 
 
-@app.get("/api/products", response_model=List[Product])
-def get_products():
-    """Return all products in the catalog."""
-    return PRODUCTS
+@app.get("/api/categories", response_model=list[CategoryOut])
+def get_categories(db: Session = Depends(get_db)):
+    return db.query(Category).order_by(Category.name).all()
 
 
-@app.get("/api/products/{product_id}", response_model=Product)
-def get_product(product_id: int):
-    """Return one product by id, or 404 if it doesn't exist."""
-    for product in PRODUCTS:
-        if product.id == product_id:
-            return product
-    raise HTTPException(status_code=404, detail="Product not found")
+@app.get("/api/products", response_model=ProductListResponse)
+def get_products(
+    q: Optional[str] = Query(None),
+    category: Optional[int] = Query(None),
+    min_price: Optional[float] = Query(None, ge=0),
+    max_price: Optional[float] = Query(None, ge=0),
+    sort: Optional[str] = Query(None, pattern="^(price_asc|price_desc)$"),
+    page: int = Query(1, ge=1),
+    db: Session = Depends(get_db),
+):
+    query = db.query(Product)
+
+    if q:
+        query = query.filter(func.lower(Product.name).contains(q.lower()))
+    if category is not None:
+        query = query.filter(Product.category_id == category)
+    if min_price is not None:
+        query = query.filter(Product.price >= min_price)
+    if max_price is not None:
+        query = query.filter(Product.price <= max_price)
+
+    if sort == "price_asc":
+        query = query.order_by(Product.price.asc())
+    elif sort == "price_desc":
+        query = query.order_by(Product.price.desc())
+    else:
+        query = query.order_by(Product.id.asc())
+
+    total = query.count()
+    products = query.offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE).all()
+
+    items = [
+        ProductOut(
+            id=p.id,
+            name=p.name,
+            price=p.price,
+            category_id=p.category_id,
+            category_name=p.category.name,
+            description=p.description,
+            rating=p.rating,
+            stock=p.stock,
+            image_url=p.image_url,
+        )
+        for p in products
+    ]
+    return ProductListResponse(items=items, total=total)
+
+
+@app.get("/api/products/{product_id}", response_model=ProductOut)
+def get_product(product_id: int, db: Session = Depends(get_db)):
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return ProductOut(
+        id=product.id,
+        name=product.name,
+        price=product.price,
+        category_id=product.category_id,
+        category_name=product.category.name,
+        description=product.description,
+        rating=product.rating,
+        stock=product.stock,
+        image_url=product.image_url,
+    )
 
 
 @app.post("/api/checkout", response_model=CheckoutResponse)
-def checkout(request: CheckoutRequest):
-    """
-    Fake checkout — no real payment processor connected yet.
-    Calculates the total and pretends the order succeeded.
-    This is where Stripe (or similar) would plug in later.
-    """
+def checkout(request: CheckoutRequest, db: Session = Depends(get_db)):
     total = 0.0
     for item in request.items:
-        product = next((p for p in PRODUCTS if p.id == item.product_id), None)
-        if product is None:
+        product = db.query(Product).filter(Product.id == item.product_id).first()
+        if not product:
             raise HTTPException(
                 status_code=400, detail=f"Unknown product_id {item.product_id}"
             )

@@ -3,7 +3,7 @@ import type { Product, CartItem } from '../types'
 interface Props {
   product: Product
   cart: CartItem[]
-  onAddToCart: (productId: number) => void
+  onAddToCart: (product: Product) => void
 }
 
 const STOCK_BADGE: Record<string, string> = {
@@ -21,6 +21,7 @@ const STOCK_LABEL: Record<string, string> = {
 export default function ProductCard({ product, cart, onAddToCart }: Props) {
   const outOfStock = product.stock_status === 'out_of_stock'
   const cartItem = cart.find((i) => i.product_id === product.id)
+
 
   return (
     <div className="flex flex-col bg-white rounded-2xl border border-gray-200 overflow-hidden">
@@ -50,7 +51,7 @@ export default function ProductCard({ product, cart, onAddToCart }: Props) {
         </div>
 
         <button
-          onClick={() => onAddToCart(product.id)}
+          onClick={() => onAddToCart(product)}
           disabled={outOfStock}
           className={`mt-2 w-full py-2.5 rounded-xl text-sm font-medium transition-colors
             ${outOfStock

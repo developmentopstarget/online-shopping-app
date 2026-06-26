@@ -11,13 +11,15 @@ from sqlalchemy import func
 from typing import Optional
 
 from .database import engine, get_db
-from .models import Base, Product, Category
+from .models import Base, Product, Category, Order, OrderItem
 from .schemas import (
     ProductOut,
     ProductListResponse,
     CategoryOut,
     CheckoutRequest,
     CheckoutResponse,
+    OrderOut,
+    OrderListItem,
 )
 from .seed import seed
 
@@ -114,18 +116,67 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
 
 @app.post("/api/checkout", response_model=CheckoutResponse)
 def checkout(request: CheckoutRequest, db: Session = Depends(get_db)):
+    if not request.items:
+        raise HTTPException(status_code=400, detail="Cart is empty")
+
     total = 0.0
+    validated: list[tuple[Product, int]] = []
+
     for item in request.items:
         product = db.query(Product).filter(Product.id == item.product_id).first()
         if not product:
+            raise HTTPException(status_code=404, detail=f"Product {item.product_id} not found")
+        if product.stock < item.quantity:
             raise HTTPException(
-                status_code=400, detail=f"Unknown product_id {item.product_id}"
+                status_code=400,
+                detail=f'"{product.name}" only has {product.stock} in stock',
             )
         total += product.price * item.quantity
+        validated.append((product, item.quantity))
+
+    order = Order(total=round(total, 2))
+    db.add(order)
+    db.flush()
+
+    for product, quantity in validated:
+        db.add(OrderItem(
+            order_id=order.id,
+            product_id=product.id,
+            product_name=product.name,
+            price=product.price,
+            quantity=quantity,
+        ))
+        product.stock -= quantity
+
+    db.commit()
+    db.refresh(order)
 
     return CheckoutResponse(
         success=True,
-        order_id="TEST-ORDER-001",
-        total=round(total, 2),
-        message="This is a test checkout — no real payment was made.",
+        order_id=order.id,
+        total=order.total,
+        message="Order placed.",
     )
+
+
+@app.get("/api/orders", response_model=list[OrderListItem])
+def get_orders(db: Session = Depends(get_db)):
+    orders = db.query(Order).order_by(Order.id.desc()).all()
+    return [
+        OrderListItem(
+            id=o.id,
+            created_at=o.created_at,
+            status=o.status,
+            total=o.total,
+            item_count=sum(i.quantity for i in o.items),
+        )
+        for o in orders
+    ]
+
+
+@app.get("/api/orders/{order_id}", response_model=OrderOut)
+def get_order(order_id: int, db: Session = Depends(get_db)):
+    order = db.query(Order).filter(Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return order

@@ -11,14 +11,16 @@ import OrdersView from './components/OrdersView'
 import LoginView from './components/LoginView'
 import RegisterView from './components/RegisterView'
 import AdminProductsView from './components/AdminProductsView'
+import ProductDetailView from './components/ProductDetailView'
 
 const API_URL = 'http://localhost:8000'
 
-type View = 'shop' | 'cart' | 'confirmation' | 'orders' | 'login' | 'register' | 'admin'
+type View = 'shop' | 'cart' | 'confirmation' | 'orders' | 'login' | 'register' | 'admin' | 'detail'
 type SortOption = '' | 'price_asc' | 'price_desc'
 
 export default function App() {
   const [view, setView] = useState<View>('shop')
+  const [selectedProductId, setSelectedProductId] = useState<number | null>(null)
   const [products, setProducts] = useState<Product[]>([])
   const [total, setTotal] = useState(0)
   const [categories, setCategories] = useState<Category[]>([])
@@ -206,8 +208,38 @@ export default function App() {
         onPlaceOrder={handlePlaceOrder}
         onBack={() => setView('shop')}
         onNavigateToLogin={() => setView('login')}
+        onNavigateToDetail={(id) => { setSelectedProductId(id); setView('detail') }}
         isSubmitting={isSubmitting}
         error={checkoutError}
+      />
+    )
+  }
+
+  if (view === 'detail' && selectedProductId !== null) {
+    return (
+      <ProductDetailView
+        productId={selectedProductId}
+        onAddToCart={(product, qty) =>
+          addToCart(
+            { product_id: product.id, name: product.name, price: product.price, image_url: product.image_url },
+            qty
+          )
+        }
+        onBuyNow={(product, qty) => {
+          const alreadyInCart = cart.some((i) => i.product_id === product.id)
+          if (alreadyInCart) {
+            // qty > 1 means the user explicitly chose a quantity — replace the existing amount.
+            // qty === 1 (the selector default) means no explicit intent to change — leave cart untouched.
+            if (qty > 1) updateQuantity(product.id, qty)
+          } else {
+            addToCart(
+              { product_id: product.id, name: product.name, price: product.price, image_url: product.image_url },
+              qty
+            )
+          }
+          setView('cart')
+        }}
+        onBack={() => setView('shop')}
       />
     )
   }
@@ -345,6 +377,10 @@ export default function App() {
                     image_url: p.image_url,
                   })
                 }
+                onNavigateToDetail={(id) => {
+                  setSelectedProductId(id)
+                  setView('detail')
+                }}
               />
             ))}
           </div>

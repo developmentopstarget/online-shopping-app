@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { Product, CartItem } from '../types'
 
 interface Props {
@@ -21,13 +22,16 @@ const STOCK_LABEL: Record<string, string> = {
 export default function ProductCard({ product, cart, onAddToCart }: Props) {
   const outOfStock = product.stock_status === 'out_of_stock'
   const cartItem = cart.find((i) => i.product_id === product.id)
+  const [imgError, setImgError] = useState(false)
 
 
   return (
     <div className="flex flex-col bg-white rounded-2xl border border-gray-200 overflow-hidden">
-      {/* Image placeholder */}
-      <div className="h-40 bg-blue-50 flex items-center justify-center text-5xl select-none">
-        👟
+      {/* Product image */}
+      <div className="h-40 bg-blue-50 flex items-center justify-center text-5xl select-none overflow-hidden">
+        {product.image_url && !imgError
+          ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" onError={() => setImgError(true)} />
+          : '👟'}
       </div>
 
       <div className="flex flex-col gap-2 p-4 flex-1">

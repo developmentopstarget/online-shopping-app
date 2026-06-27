@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import BaseModel, computed_field
+from pydantic import BaseModel, Field, computed_field
 from typing import Optional, List
 
 
@@ -11,6 +11,7 @@ class UserCreate(BaseModel):
 class UserOut(BaseModel):
     id: int
     email: str
+    is_admin: bool
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -98,3 +99,27 @@ class OrderListItem(BaseModel):
     status: str
     total: float
     item_count: int
+
+
+class ProductCreate(BaseModel):
+    name: str
+    price: float = Field(gt=0)
+    category_id: int
+    description: str = ""
+    rating: float = Field(default=0.0, ge=0.0, le=5.0)
+    stock: int = Field(ge=0)
+    image_url: Optional[str] = None
+
+
+class ProductUpdate(BaseModel):
+    name: Optional[str] = None
+    price: Optional[float] = Field(default=None, gt=0)
+    category_id: Optional[int] = None
+    description: Optional[str] = None
+    rating: Optional[float] = Field(default=None, ge=0.0, le=5.0)
+    stock: Optional[int] = Field(default=None, ge=0)
+    image_url: Optional[str] = None
+
+
+class StockUpdate(BaseModel):
+    stock: int = Field(ge=0)

@@ -10,10 +10,11 @@ import OrderConfirmation from './components/OrderConfirmation'
 import OrdersView from './components/OrdersView'
 import LoginView from './components/LoginView'
 import RegisterView from './components/RegisterView'
+import AdminProductsView from './components/AdminProductsView'
 
 const API_URL = 'http://localhost:8000'
 
-type View = 'shop' | 'cart' | 'confirmation' | 'orders' | 'login' | 'register'
+type View = 'shop' | 'cart' | 'confirmation' | 'orders' | 'login' | 'register' | 'admin'
 type SortOption = '' | 'price_asc' | 'price_desc'
 
 export default function App() {
@@ -173,6 +174,27 @@ export default function App() {
     return <OrdersView token={auth.token!} onBack={() => setView('shop')} />
   }
 
+  if (view === 'admin') {
+    if (!auth.user?.is_admin) {
+      return (
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-gray-200 p-8 max-w-sm w-full text-center space-y-4">
+            <p className="font-semibold text-gray-900">Access denied</p>
+            <button onClick={() => setView('shop')} className="w-full py-3 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-700">
+              Back to shop
+            </button>
+          </div>
+        </div>
+      )
+    }
+    return (
+      <AdminProductsView
+        token={auth.token!}
+        onBack={() => setView('shop')}
+      />
+    )
+  }
+
   if (view === 'cart') {
     return (
       <CartView
@@ -212,6 +234,14 @@ export default function App() {
           <div className="flex items-center gap-4">
             {auth.isAuthenticated ? (
               <>
+                {auth.user?.is_admin && (
+                  <button
+                    onClick={() => setView('admin')}
+                    className="text-sm text-gray-500 hover:text-gray-900"
+                  >
+                    Admin
+                  </button>
+                )}
                 <button
                   onClick={() => setView('orders')}
                   className="text-sm text-gray-500 hover:text-gray-900"

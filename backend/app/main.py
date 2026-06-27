@@ -22,6 +22,9 @@ from .schemas import (
     UserCreate,
     UserOut,
     TokenResponse,
+    ProductCreate,
+    ProductUpdate,
+    StockUpdate,
 )
 from .auth import (
     hash_password,
@@ -29,6 +32,7 @@ from .auth import (
     create_access_token,
     get_current_user,
     get_optional_current_user,
+    get_current_admin,
 )
 from .seed import seed
 
@@ -241,3 +245,94 @@ def get_order(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     return order
+
+
+# ---------------------------------------------------------------------------
+# Admin routes — all require is_admin=True
+# ---------------------------------------------------------------------------
+
+def _product_out(p: Product) -> ProductOut:
+    return ProductOut(
+        id=p.id,
+        name=p.name,
+        price=p.price,
+        category_id=p.category_id,
+        category_name=p.category.name,
+        description=p.description,
+        rating=p.rating,
+        stock=p.stock,
+        image_url=p.image_url,
+    )
+
+
+@app.get("/admin/products", response_model=list[ProductOut])
+def admin_list_products(
+    _: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    return [_product_out(p) for p in db.query(Product).order_by(Product.id.asc()).all()]
+
+
+@app.post("/admin/products", response_model=ProductOut, status_code=201)
+def admin_create_product(
+    payload: ProductCreate,
+    _: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    if not db.query(Category).filter(Category.id == payload.category_id).first():
+        raise HTTPException(status_code=422, detail="category_id does not exist")
+    product = Product(**payload.model_dump())
+    db.add(product)
+    db.commit()
+    db.refresh(product)
+    return _product_out(product)
+
+
+@app.put("/admin/products/{product_id}", response_model=ProductOut)
+def admin_update_product(
+    product_id: int,
+    payload: ProductUpdate,
+    _: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    updates = payload.model_dump(exclude_unset=True)
+    if "category_id" in updates:
+        if not db.query(Category).filter(Category.id == updates["category_id"]).first():
+            raise HTTPException(status_code=422, detail="category_id does not exist")
+    for field, value in updates.items():
+        setattr(product, field, value)
+    db.commit()
+    db.refresh(product)
+    return _product_out(product)
+
+
+@app.patch("/admin/products/{product_id}/stock", response_model=ProductOut)
+def admin_update_stock(
+    product_id: int,
+    payload: StockUpdate,
+    _: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    product.stock = payload.stock
+    db.commit()
+    db.refresh(product)
+    return _product_out(product)
+
+
+@app.delete("/admin/products/{product_id}", status_code=204)
+def admin_delete_product(
+    product_id: int,
+    _: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    db.delete(product)
+    db.commit()

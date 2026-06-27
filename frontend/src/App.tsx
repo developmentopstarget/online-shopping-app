@@ -1,41 +1,47 @@
 import { useState, useEffect } from 'react'
-import type { Product, Category, CartItem } from './types'
+import type { Product, Category, CheckoutResult } from './types'
 import { useDebounce } from './hooks/useDebounce'
+import { useCart } from './hooks/useCart'
 import ProductCard from './components/ProductCard'
 import CategoryChips from './components/CategoryChips'
+import CartView from './components/CartView'
+import OrderConfirmation from './components/OrderConfirmation'
+import OrdersView from './components/OrdersView'
 
 const API_URL = 'http://localhost:8000'
 
+type View = 'shop' | 'cart' | 'confirmation' | 'orders'
 type SortOption = '' | 'price_asc' | 'price_desc'
 
 export default function App() {
+  const [view, setView] = useState<View>('shop')
   const [products, setProducts] = useState<Product[]>([])
   const [total, setTotal] = useState(0)
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [fetchError, setFetchError] = useState<string | null>(null)
 
   const [searchInput, setSearchInput] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null)
   const [sort, setSort] = useState<SortOption>('')
   const [page, setPage] = useState(1)
 
-  const [cart, setCart] = useState<CartItem[]>([])
-  const [orderResult, setOrderResult] = useState<{
-    order_id: string; total: number; message: string
-  } | null>(null)
+  const [orderResult, setOrderResult] = useState<CheckoutResult | null>(null)
+  const [checkoutError, setCheckoutError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const { cart, addToCart, updateQuantity, removeFromCart, clearCart, totalItems, subtotal } =
+    useCart()
 
   const debouncedSearch = useDebounce(searchInput, 300)
 
-  // Fetch categories once
   useEffect(() => {
     fetch(`${API_URL}/api/categories`)
       .then((r) => r.json())
-      .then(setCategories)
-      .catch(() => {/* categories are optional UI chrome */})
+      .then((data: Category[]) => setCategories(data))
+      .catch(() => {})
   }, [])
 
-  // Fetch products whenever filters change
   useEffect(() => {
     setLoading(true)
     const params = new URLSearchParams()
@@ -49,84 +55,92 @@ export default function App() {
         if (!r.ok) throw new Error('Failed to load products')
         return r.json()
       })
-      .then((data) => {
+      .then((data: { items: Product[]; total: number }) => {
         setProducts(data.items)
         setTotal(data.total)
         setLoading(false)
       })
       .catch((err: Error) => {
-        setError(err.message)
+        setFetchError(err.message)
         setLoading(false)
       })
   }, [debouncedSearch, selectedCategory, sort, page])
 
-  // Reset to page 1 whenever filters change
   useEffect(() => {
     setPage(1)
   }, [debouncedSearch, selectedCategory, sort])
 
-  function addToCart(productId: number) {
-    setCart((prev) => {
-      const existing = prev.find((i) => i.product_id === productId)
-      if (existing) {
-        return prev.map((i) =>
-          i.product_id === productId ? { ...i, quantity: i.quantity + 1 } : i
-        )
-      }
-      return [...prev, { product_id: productId, quantity: 1 }]
-    })
-  }
-
-  function totalItems() {
-    return cart.reduce((sum, i) => sum + i.quantity, 0)
-  }
-
-  function handleCheckout() {
-    fetch(`${API_URL}/api/checkout`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items: cart }),
-    })
-      .then((r) => r.json())
-      .then((data) => {
-        setOrderResult(data)
-        setCart([])
+  async function handlePlaceOrder() {
+    setIsSubmitting(true)
+    setCheckoutError(null)
+    try {
+      const resp = await fetch(`${API_URL}/api/checkout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: cart.map(({ product_id, quantity }) => ({ product_id, quantity })),
+        }),
       })
-      .catch((err: Error) => setError(err.message))
+      const data = (await resp.json()) as CheckoutResult & { detail?: string }
+      if (!resp.ok) {
+        setCheckoutError(data.detail ?? 'Checkout failed')
+        return
+      }
+      clearCart()
+      setOrderResult(data)
+      setView('confirmation')
+    } catch {
+      setCheckoutError('Could not reach the server.')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const totalPages = Math.ceil(total / 12)
 
-  // --- Order confirmation screen ---
-  if (orderResult) {
+  if (view === 'confirmation' && orderResult) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl border border-gray-200 p-8 max-w-sm w-full text-center space-y-3">
-          <div className="text-4xl">✅</div>
-          <p className="font-semibold text-gray-900">Order placed (test mode)</p>
-          <p className="text-sm text-gray-500">Order ID: {orderResult.order_id}</p>
-          <p className="text-lg font-medium text-gray-900">${orderResult.total.toFixed(2)}</p>
-          <p className="text-xs text-gray-400">{orderResult.message}</p>
-          <button
-            onClick={() => setOrderResult(null)}
-            className="mt-4 w-full py-3 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-700"
-          >
-            Back to shop
-          </button>
-        </div>
-      </div>
+      <OrderConfirmation
+        result={orderResult}
+        onBackToShop={() => {
+          setOrderResult(null)
+          setView('shop')
+        }}
+        onViewOrders={() => {
+          setOrderResult(null)
+          setView('orders')
+        }}
+      />
     )
   }
 
-  // --- Error screen ---
-  if (error) {
+  if (view === 'orders') {
+    return <OrdersView onBack={() => setView('shop')} />
+  }
+
+  if (view === 'cart') {
+    return (
+      <CartView
+        cart={cart}
+        subtotal={subtotal}
+        onUpdateQuantity={updateQuantity}
+        onRemove={removeFromCart}
+        onPlaceOrder={handlePlaceOrder}
+        onBack={() => setView('shop')}
+        isSubmitting={isSubmitting}
+        error={checkoutError}
+      />
+    )
+  }
+
+  if (fetchError) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl border border-gray-200 p-8 max-w-sm w-full text-center">
           <p className="text-sm text-gray-500">
             Couldn't reach the backend. Is it running on port 8000?
           </p>
-          <p className="text-xs text-red-400 mt-2">{error}</p>
+          <p className="text-xs text-red-400 mt-2">{fetchError}</p>
         </div>
       </div>
     )
@@ -138,7 +152,20 @@ export default function App() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold text-gray-900">Sneaker shop</h1>
-          <span className="text-sm text-gray-500">🛒 {totalItems()}</span>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setView('orders')}
+              className="text-sm text-gray-500 hover:text-gray-900"
+            >
+              Orders
+            </button>
+            <button
+              onClick={() => setView('cart')}
+              className="text-sm text-gray-500 hover:text-gray-900"
+            >
+              🛒 {totalItems}
+            </button>
+          </div>
         </div>
 
         {/* Search */}
@@ -169,7 +196,9 @@ export default function App() {
               <option value="price_desc">Price: high → low</option>
             </select>
             {total > 0 && (
-              <span className="ml-auto text-xs text-gray-400">{total} product{total !== 1 ? 's' : ''}</span>
+              <span className="ml-auto text-xs text-gray-400">
+                {total} product{total !== 1 ? 's' : ''}
+              </span>
             )}
           </div>
         </div>
@@ -178,7 +207,10 @@ export default function App() {
         {loading ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="h-72 bg-white rounded-2xl border border-gray-200 animate-pulse" />
+              <div
+                key={i}
+                className="h-72 bg-white rounded-2xl border border-gray-200 animate-pulse"
+              />
             ))}
           </div>
         ) : products.length === 0 ? (
@@ -192,7 +224,14 @@ export default function App() {
                 key={product.id}
                 product={product}
                 cart={cart}
-                onAddToCart={addToCart}
+                onAddToCart={(p) =>
+                  addToCart({
+                    product_id: p.id,
+                    name: p.name,
+                    price: p.price,
+                    image_url: p.image_url,
+                  })
+                }
               />
             ))}
           </div>
@@ -222,15 +261,15 @@ export default function App() {
         )}
       </div>
 
-      {/* Sticky checkout bar */}
-      {cart.length > 0 && (
+      {/* Sticky cart bar */}
+      {totalItems > 0 && (
         <div className="fixed bottom-0 inset-x-0 bg-white border-t border-gray-200 p-4">
           <div className="max-w-5xl mx-auto">
             <button
-              onClick={handleCheckout}
+              onClick={() => setView('cart')}
               className="w-full py-3 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-700"
             >
-              Checkout ({totalItems()} item{totalItems() !== 1 ? 's' : ''}) — test mode
+              View cart ({totalItems} item{totalItems !== 1 ? 's' : ''})
             </button>
           </div>
         </div>

@@ -26,4 +26,37 @@ export interface ProductListResponse {
 export interface CartItem {
   product_id: number
   quantity: number
+  name: string
+  price: number
+  image_url: string | null
+}
+
+export interface CheckoutResult {
+  success: boolean
+  order_id: number
+  total: number
+  message: string
+}
+
+export interface OrderItem {
+  product_id: number
+  product_name: string
+  price: number
+  quantity: number
+}
+
+export interface Order {
+  id: number
+  created_at: string
+  status: string
+  total: number
+  item_count: number
+}
+
+export interface OrderDetail {
+  id: number
+  created_at: string
+  status: string
+  total: number
+  items: OrderItem[]
 }

@@ -1,3 +1,4 @@
+from datetime import datetime
 from pydantic import BaseModel, computed_field
 from typing import Optional, List
 
@@ -48,6 +49,33 @@ class CheckoutRequest(BaseModel):
 
 class CheckoutResponse(BaseModel):
     success: bool
-    order_id: str
+    order_id: int
     total: float
     message: str
+
+
+class OrderItemOut(BaseModel):
+    product_id: int
+    product_name: str
+    price: float
+    quantity: int
+
+    model_config = {"from_attributes": True}
+
+
+class OrderOut(BaseModel):
+    id: int
+    created_at: datetime
+    status: str
+    total: float
+    items: List[OrderItemOut]
+
+    model_config = {"from_attributes": True}
+
+
+class OrderListItem(BaseModel):
+    id: int
+    created_at: datetime
+    status: str
+    total: float
+    item_count: int

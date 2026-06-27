@@ -226,10 +226,17 @@ export default function App() {
           )
         }
         onBuyNow={(product, qty) => {
-          addToCart(
-            { product_id: product.id, name: product.name, price: product.price, image_url: product.image_url },
-            qty
-          )
+          const alreadyInCart = cart.some((i) => i.product_id === product.id)
+          if (alreadyInCart) {
+            // qty > 1 means the user explicitly chose a quantity — replace the existing amount.
+            // qty === 1 (the selector default) means no explicit intent to change — leave cart untouched.
+            if (qty > 1) updateQuantity(product.id, qty)
+          } else {
+            addToCart(
+              { product_id: product.id, name: product.name, price: product.price, image_url: product.image_url },
+              qty
+            )
+          }
           setView('cart')
         }}
         onBack={() => setView('shop')}

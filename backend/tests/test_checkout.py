@@ -13,6 +13,12 @@ from app.database import Base, get_db
 from app.models import Category, Product
 from app.main import app
 
+
+def _auth_header(client: TestClient, email: str = "test@example.com", password: str = "pass1234") -> dict:
+    client.post("/auth/register", json={"email": email, "password": password})
+    resp = client.post("/auth/login", json={"email": email, "password": password})
+    return {"Authorization": f"Bearer {resp.json()['access_token']}"}
+
 engine = create_engine(
     "sqlite:///:memory:",
     connect_args={"check_same_thread": False},
@@ -107,21 +113,23 @@ def test_order_total_matches_line_items():
 
 
 def test_order_history_returns_newest_first():
-    client.post("/api/checkout", json={"items": [{"product_id": 1, "quantity": 1}]})
-    client.post("/api/checkout", json={"items": [{"product_id": 2, "quantity": 1}]})
+    headers = _auth_header(client)
+    client.post("/api/checkout", json={"items": [{"product_id": 1, "quantity": 1}]}, headers=headers)
+    client.post("/api/checkout", json={"items": [{"product_id": 2, "quantity": 1}]}, headers=headers)
 
-    orders = client.get("/api/orders").json()
+    orders = client.get("/api/orders", headers=headers).json()
     assert len(orders) == 2
     assert orders[0]["id"] > orders[1]["id"]
 
 
 def test_order_detail_includes_line_items():
+    headers = _auth_header(client, email="detail@example.com")
     resp = client.post("/api/checkout", json={"items": [
         {"product_id": 1, "quantity": 2},
-    ]})
+    ]}, headers=headers)
     order_id = resp.json()["order_id"]
 
-    detail = client.get(f"/api/orders/{order_id}").json()
+    detail = client.get(f"/api/orders/{order_id}", headers=headers).json()
     assert detail["id"] == order_id
     assert len(detail["items"]) == 1
     assert detail["items"][0]["product_name"] == "AirStride Pro"
@@ -130,5 +138,6 @@ def test_order_detail_includes_line_items():
 
 
 def test_order_not_found_returns_404():
-    resp = client.get("/api/orders/99999")
+    headers = _auth_header(client, email="notfound@example.com")
+    resp = client.get("/api/orders/99999", headers=headers)
     assert resp.status_code == 404

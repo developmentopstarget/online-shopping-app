@@ -3,6 +3,25 @@ from pydantic import BaseModel, computed_field
 from typing import Optional, List
 
 
+class UserCreate(BaseModel):
+    email: str
+    password: str
+
+
+class UserOut(BaseModel):
+    id: int
+    email: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserOut
+
+
 class CategoryOut(BaseModel):
     id: int
     name: str

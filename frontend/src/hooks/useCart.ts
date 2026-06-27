@@ -17,15 +17,15 @@ export function useCart() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(cart))
   }, [cart])
 
-  function addToCart(item: Omit<CartItem, 'quantity'>) {
+  function addToCart(item: Omit<CartItem, 'quantity'>, quantity = 1) {
     setCart((prev) => {
       const existing = prev.find((i) => i.product_id === item.product_id)
       if (existing) {
         return prev.map((i) =>
-          i.product_id === item.product_id ? { ...i, quantity: i.quantity + 1 } : i
+          i.product_id === item.product_id ? { ...i, quantity: i.quantity + quantity } : i
         )
       }
-      return [...prev, { ...item, quantity: 1 }]
+      return [...prev, { ...item, quantity }]
     })
   }
 

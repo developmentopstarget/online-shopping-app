@@ -208,6 +208,7 @@ export default function App() {
         onPlaceOrder={handlePlaceOrder}
         onBack={() => setView('shop')}
         onNavigateToLogin={() => setView('login')}
+        onNavigateToDetail={(id) => { setSelectedProductId(id); setView('detail') }}
         isSubmitting={isSubmitting}
         error={checkoutError}
       />

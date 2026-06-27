@@ -21,6 +21,7 @@ interface Props {
   onPlaceOrder: () => void
   onBack: () => void
   onNavigateToLogin: () => void
+  onNavigateToDetail: (productId: number) => void
   isSubmitting: boolean
   error: string | null
 }
@@ -34,6 +35,7 @@ export default function CartView({
   onPlaceOrder,
   onBack,
   onNavigateToLogin,
+  onNavigateToDetail,
   isSubmitting,
   error,
 }: Props) {
@@ -77,14 +79,22 @@ export default function CartView({
           {cart.map((item) => (
             <div
               key={item.product_id}
-              className="bg-white rounded-2xl border border-gray-200 p-4 flex items-center gap-4"
+              className="bg-white rounded-2xl border border-gray-200 flex items-center gap-4 overflow-hidden"
             >
-              <CartItemImage imageUrl={item.image_url} name={item.name} />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
-                <p className="text-sm text-gray-500">${item.price.toFixed(2)} each</p>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
+              {/* Clickable zone: image + name/price — navigates to detail */}
+              <button
+                onClick={() => onNavigateToDetail(item.product_id)}
+                className="flex items-center gap-4 flex-1 min-w-0 p-4 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gray-400 hover:bg-gray-50 transition-colors"
+              >
+                <CartItemImage imageUrl={item.image_url} name={item.name} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
+                  <p className="text-sm text-gray-500">${item.price.toFixed(2)} each</p>
+                </div>
+              </button>
+
+              {/* Quantity controls + Remove — sibling zone, no nesting */}
+              <div className="flex items-center gap-2 shrink-0 pr-4">
                 <button
                   onClick={() => onUpdateQuantity(item.product_id, item.quantity - 1)}
                   className="w-7 h-7 rounded-full border border-gray-200 text-sm text-gray-600 hover:border-gray-400 flex items-center justify-center"

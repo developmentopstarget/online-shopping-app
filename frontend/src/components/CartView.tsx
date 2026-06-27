@@ -1,6 +1,17 @@
 import { useState } from 'react'
 import type { CartItem } from '../types'
 
+function CartItemImage({ imageUrl, name }: { imageUrl: string | null; name: string }) {
+  const [imgError, setImgError] = useState(false)
+  return (
+    <div className="h-14 w-14 bg-blue-50 rounded-xl flex items-center justify-center text-2xl shrink-0 overflow-hidden">
+      {imageUrl && !imgError
+        ? <img src={imageUrl} alt={name} className="w-full h-full object-cover" onError={() => setImgError(true)} />
+        : '👟'}
+    </div>
+  )
+}
+
 interface Props {
   cart: CartItem[]
   subtotal: number
@@ -68,9 +79,7 @@ export default function CartView({
               key={item.product_id}
               className="bg-white rounded-2xl border border-gray-200 p-4 flex items-center gap-4"
             >
-              <div className="h-14 w-14 bg-blue-50 rounded-xl flex items-center justify-center text-2xl shrink-0">
-                👟
-              </div>
+              <CartItemImage imageUrl={item.image_url} name={item.name} />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
                 <p className="text-sm text-gray-500">${item.price.toFixed(2)} each</p>

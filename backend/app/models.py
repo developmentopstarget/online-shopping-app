@@ -4,6 +4,17 @@ from sqlalchemy.orm import relationship
 from .database import Base
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, nullable=False, unique=True, index=True)
+    hashed_password = Column(String, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    orders = relationship("Order", back_populates="user")
+
+
 class Category(Base):
     __tablename__ = "categories"
 
@@ -35,8 +46,10 @@ class Order(Base):
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     status = Column(String, nullable=False, default="completed")
     total = Column(Float, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
     items = relationship("OrderItem", back_populates="order")
+    user = relationship("User", back_populates="orders")
 
 
 class OrderItem(Base):

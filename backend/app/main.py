@@ -1,7 +1,6 @@
 """
-Sneaker Shop API — M1
-Real SQLite database via SQLAlchemy. Products support search, category filter,
-price range, sort, and pagination.
+Sneaker Shop API — M3
+Adds JWT auth (register/login), user-scoped order history.
 """
 
 from fastapi import FastAPI, HTTPException, Depends, Query
@@ -11,7 +10,7 @@ from sqlalchemy import func
 from typing import Optional
 
 from .database import engine, get_db
-from .models import Base, Product, Category, Order, OrderItem
+from .models import Base, Product, Category, Order, OrderItem, User
 from .schemas import (
     ProductOut,
     ProductListResponse,
@@ -20,6 +19,16 @@ from .schemas import (
     CheckoutResponse,
     OrderOut,
     OrderListItem,
+    UserCreate,
+    UserOut,
+    TokenResponse,
+)
+from .auth import (
+    hash_password,
+    verify_password,
+    create_access_token,
+    get_current_user,
+    get_optional_current_user,
 )
 from .seed import seed
 
@@ -41,6 +50,35 @@ PAGE_SIZE = 12
 @app.get("/")
 def root():
     return {"status": "Sneaker Shop API is running"}
+
+
+@app.post("/auth/register", response_model=TokenResponse)
+def register(payload: UserCreate, db: Session = Depends(get_db)):
+    if db.query(User).filter(func.lower(User.email) == payload.email.lower()).first():
+        raise HTTPException(status_code=409, detail="Email already registered")
+    user = User(
+        email=payload.email.lower(),
+        hashed_password=hash_password(payload.password),
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return TokenResponse(
+        access_token=create_access_token(user.id),
+        user=UserOut.model_validate(user),
+    )
+
+
+@app.post("/auth/login", response_model=TokenResponse)
+def login(payload: UserCreate, db: Session = Depends(get_db)):
+    user = db.query(User).filter(func.lower(User.email) == payload.email.lower()).first()
+    # Intentionally identical error for wrong email vs wrong password to avoid email enumeration.
+    if not user or not verify_password(payload.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    return TokenResponse(
+        access_token=create_access_token(user.id),
+        user=UserOut.model_validate(user),
+    )
 
 
 @app.get("/api/categories", response_model=list[CategoryOut])
@@ -115,7 +153,11 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/api/checkout", response_model=CheckoutResponse)
-def checkout(request: CheckoutRequest, db: Session = Depends(get_db)):
+def checkout(
+    request: CheckoutRequest,
+    current_user: Optional[User] = Depends(get_optional_current_user),
+    db: Session = Depends(get_db),
+):
     if not request.items:
         raise HTTPException(status_code=400, detail="Cart is empty")
 
@@ -134,7 +176,10 @@ def checkout(request: CheckoutRequest, db: Session = Depends(get_db)):
         total += product.price * item.quantity
         validated.append((product, item.quantity))
 
-    order = Order(total=round(total, 2))
+    order = Order(
+        total=round(total, 2),
+        user_id=current_user.id if current_user else None,
+    )
     db.add(order)
     db.flush()
 
@@ -160,8 +205,16 @@ def checkout(request: CheckoutRequest, db: Session = Depends(get_db)):
 
 
 @app.get("/api/orders", response_model=list[OrderListItem])
-def get_orders(db: Session = Depends(get_db)):
-    orders = db.query(Order).order_by(Order.id.desc()).all()
+def get_orders(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    orders = (
+        db.query(Order)
+        .filter(Order.user_id == current_user.id)
+        .order_by(Order.id.desc())
+        .all()
+    )
     return [
         OrderListItem(
             id=o.id,
@@ -175,8 +228,16 @@ def get_orders(db: Session = Depends(get_db)):
 
 
 @app.get("/api/orders/{order_id}", response_model=OrderOut)
-def get_order(order_id: int, db: Session = Depends(get_db)):
-    order = db.query(Order).filter(Order.id == order_id).first()
+def get_order(
+    order_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    order = (
+        db.query(Order)
+        .filter(Order.id == order_id, Order.user_id == current_user.id)
+        .first()
+    )
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     return order

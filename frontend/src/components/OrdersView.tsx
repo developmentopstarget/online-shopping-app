@@ -4,26 +4,29 @@ import type { Order, OrderDetail } from '../types'
 const API_URL = 'http://localhost:8000'
 
 interface Props {
+  token: string
   onBack: () => void
 }
 
-export default function OrdersView({ onBack }: Props) {
+export default function OrdersView({ token, onBack }: Props) {
   const [orders, setOrders] = useState<Order[]>([])
   const [selected, setSelected] = useState<OrderDetail | null>(null)
   const [loading, setLoading] = useState(true)
 
+  const authHeader = { Authorization: `Bearer ${token}` }
+
   useEffect(() => {
-    fetch(`${API_URL}/api/orders`)
+    fetch(`${API_URL}/api/orders`, { headers: authHeader })
       .then((r) => r.json())
       .then((data: Order[]) => {
         setOrders(data)
         setLoading(false)
       })
       .catch(() => setLoading(false))
-  }, [])
+  }, [token])
 
   async function viewDetail(orderId: number) {
-    const resp = await fetch(`${API_URL}/api/orders/${orderId}`)
+    const resp = await fetch(`${API_URL}/api/orders/${orderId}`, { headers: authHeader })
     const data = (await resp.json()) as OrderDetail
     setSelected(data)
   }

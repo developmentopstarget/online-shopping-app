@@ -1,5 +1,10 @@
 export type StockStatus = 'in_stock' | 'low_stock' | 'out_of_stock'
 
+export interface AuthUser {
+  id: number
+  email: string
+}
+
 export interface Category {
   id: number
   name: string

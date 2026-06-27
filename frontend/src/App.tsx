@@ -2,15 +2,18 @@ import { useState, useEffect } from 'react'
 import type { Product, Category, CheckoutResult } from './types'
 import { useDebounce } from './hooks/useDebounce'
 import { useCart } from './hooks/useCart'
+import { useAuth } from './hooks/useAuth'
 import ProductCard from './components/ProductCard'
 import CategoryChips from './components/CategoryChips'
 import CartView from './components/CartView'
 import OrderConfirmation from './components/OrderConfirmation'
 import OrdersView from './components/OrdersView'
+import LoginView from './components/LoginView'
+import RegisterView from './components/RegisterView'
 
 const API_URL = 'http://localhost:8000'
 
-type View = 'shop' | 'cart' | 'confirmation' | 'orders'
+type View = 'shop' | 'cart' | 'confirmation' | 'orders' | 'login' | 'register'
 type SortOption = '' | 'price_asc' | 'price_desc'
 
 export default function App() {
@@ -32,6 +35,7 @@ export default function App() {
 
   const { cart, addToCart, updateQuantity, removeFromCart, clearCart, totalItems, subtotal } =
     useCart()
+  const auth = useAuth()
 
   const debouncedSearch = useDebounce(searchInput, 300)
 
@@ -73,10 +77,12 @@ export default function App() {
   async function handlePlaceOrder() {
     setIsSubmitting(true)
     setCheckoutError(null)
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (auth.token) headers['Authorization'] = `Bearer ${auth.token}`
     try {
       const resp = await fetch(`${API_URL}/api/checkout`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           items: cart.map(({ product_id, quantity }) => ({ product_id, quantity })),
         }),
@@ -98,10 +104,37 @@ export default function App() {
 
   const totalPages = Math.ceil(total / 12)
 
+  if (view === 'login') {
+    return (
+      <LoginView
+        onSuccess={(token, user) => {
+          auth.login(token, user)
+          setView('shop')
+        }}
+        onNavigateToRegister={() => setView('register')}
+        onContinueAsGuest={() => setView('shop')}
+      />
+    )
+  }
+
+  if (view === 'register') {
+    return (
+      <RegisterView
+        onSuccess={(token, user) => {
+          auth.login(token, user)
+          setView('shop')
+        }}
+        onNavigateToLogin={() => setView('login')}
+        onContinueAsGuest={() => setView('shop')}
+      />
+    )
+  }
+
   if (view === 'confirmation' && orderResult) {
     return (
       <OrderConfirmation
         result={orderResult}
+        isAuthenticated={auth.isAuthenticated}
         onBackToShop={() => {
           setOrderResult(null)
           setView('shop')
@@ -115,7 +148,29 @@ export default function App() {
   }
 
   if (view === 'orders') {
-    return <OrdersView onBack={() => setView('shop')} />
+    if (!auth.isAuthenticated) {
+      return (
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-gray-200 p-8 max-w-sm w-full text-center space-y-4">
+            <p className="font-semibold text-gray-900">Sign in to see your orders</p>
+            <p className="text-sm text-gray-500">Order history is only available to signed-in accounts.</p>
+            <button
+              onClick={() => setView('login')}
+              className="w-full py-3 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-700"
+            >
+              Sign in / Create account
+            </button>
+            <button
+              onClick={() => setView('shop')}
+              className="w-full py-3 border border-gray-200 text-gray-700 rounded-xl text-sm font-medium hover:border-gray-400"
+            >
+              Back to shop
+            </button>
+          </div>
+        </div>
+      )
+    }
+    return <OrdersView token={auth.token!} onBack={() => setView('shop')} />
   }
 
   if (view === 'cart') {
@@ -123,10 +178,12 @@ export default function App() {
       <CartView
         cart={cart}
         subtotal={subtotal}
+        isAuthenticated={auth.isAuthenticated}
         onUpdateQuantity={updateQuantity}
         onRemove={removeFromCart}
         onPlaceOrder={handlePlaceOrder}
         onBack={() => setView('shop')}
+        onNavigateToLogin={() => setView('login')}
         isSubmitting={isSubmitting}
         error={checkoutError}
       />
@@ -153,12 +210,38 @@ export default function App() {
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold text-gray-900">Sneaker shop</h1>
           <div className="flex items-center gap-4">
-            <button
-              onClick={() => setView('orders')}
-              className="text-sm text-gray-500 hover:text-gray-900"
-            >
-              Orders
-            </button>
+            {auth.isAuthenticated ? (
+              <>
+                <button
+                  onClick={() => setView('orders')}
+                  className="text-sm text-gray-500 hover:text-gray-900"
+                >
+                  Orders
+                </button>
+                <span className="text-xs text-gray-400">{auth.user?.email}</span>
+                <button
+                  onClick={auth.logout}
+                  className="text-xs text-gray-400 hover:text-gray-600"
+                >
+                  Sign out
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => setView('orders')}
+                  className="text-sm text-gray-500 hover:text-gray-900"
+                >
+                  Orders
+                </button>
+                <button
+                  onClick={() => setView('login')}
+                  className="text-sm text-gray-500 hover:text-gray-900"
+                >
+                  Sign in
+                </button>
+              </>
+            )}
             <button
               onClick={() => setView('cart')}
               className="text-sm text-gray-500 hover:text-gray-900"

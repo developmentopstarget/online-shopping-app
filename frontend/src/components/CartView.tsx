@@ -1,12 +1,15 @@
+import { useState } from 'react'
 import type { CartItem } from '../types'
 
 interface Props {
   cart: CartItem[]
   subtotal: number
+  isAuthenticated: boolean
   onUpdateQuantity: (productId: number, quantity: number) => void
   onRemove: (productId: number) => void
   onPlaceOrder: () => void
   onBack: () => void
+  onNavigateToLogin: () => void
   isSubmitting: boolean
   error: string | null
 }
@@ -14,13 +17,25 @@ interface Props {
 export default function CartView({
   cart,
   subtotal,
+  isAuthenticated,
   onUpdateQuantity,
   onRemove,
   onPlaceOrder,
   onBack,
+  onNavigateToLogin,
   isSubmitting,
   error,
 }: Props) {
+  const [showAuthPrompt, setShowAuthPrompt] = useState(false)
+
+  function handlePlaceOrderClick() {
+    if (!isAuthenticated) {
+      setShowAuthPrompt(true)
+    } else {
+      onPlaceOrder()
+    }
+  }
+
   if (cart.length === 0) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
@@ -92,13 +107,39 @@ export default function CartView({
 
         {error && <p className="text-sm text-red-500 text-center">{error}</p>}
 
-        <button
-          onClick={onPlaceOrder}
-          disabled={isSubmitting}
-          className="w-full py-3 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-700 disabled:opacity-60"
-        >
-          {isSubmitting ? 'Placing order…' : 'Place order'}
-        </button>
+        {showAuthPrompt ? (
+          <div className="bg-white rounded-2xl border border-gray-200 p-6 space-y-3 text-center">
+            <p className="text-sm font-medium text-gray-900">Sign in to save your order history</p>
+            <p className="text-xs text-gray-400">Or continue as a guest — your order will still go through.</p>
+            <button
+              onClick={() => {
+                setShowAuthPrompt(false)
+                onNavigateToLogin()
+              }}
+              className="w-full py-3 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-700"
+            >
+              Sign in / Create account
+            </button>
+            <button
+              onClick={() => {
+                setShowAuthPrompt(false)
+                onPlaceOrder()
+              }}
+              disabled={isSubmitting}
+              className="w-full py-3 border border-gray-200 text-gray-700 rounded-xl text-sm font-medium hover:border-gray-400 disabled:opacity-50"
+            >
+              {isSubmitting ? 'Placing order…' : 'Continue as guest'}
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={handlePlaceOrderClick}
+            disabled={isSubmitting}
+            className="w-full py-3 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-700 disabled:opacity-60"
+          >
+            {isSubmitting ? 'Placing order…' : 'Place order'}
+          </button>
+        )}
       </div>
     </div>
   )

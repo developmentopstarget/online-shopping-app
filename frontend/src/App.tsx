@@ -227,7 +227,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-5xl mx-auto px-4 py-6 space-y-4">
+      <div className={`max-w-5xl mx-auto px-4 pt-6 space-y-4 ${totalItems > 0 ? 'pb-24' : 'pb-6'}`}>
         {/* Header */}
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold text-gray-900">Sneaker shop</h1>
